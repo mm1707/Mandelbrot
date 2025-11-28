@@ -14,6 +14,8 @@ public class MyMandelbrot  {
     private double x_max = 1.5;
     private double y_max = 1.25;
     private double y_min = -1.25;
+    private int numThreads = Runtime.getRuntime().availableProcessors();
+    private float[][] pixelColors;
 
     public MyMandelbrot (int width, int height, int max_iter, double x_min, double x_max, double y_min, double y_max) {
         this.width = width;
@@ -23,34 +25,74 @@ public class MyMandelbrot  {
         this.x_max = x_max;
         this.y_min = y_min;
         this.y_max = y_max;
+        this.pixelColors = new float[height][width];
     }
 
-    public float[][] generateMandelbrot() {
+    public float[][] generateMandelbrotThreads() {
+
+        int rowsPerThread = height / numThreads;
         double pixelWidth = (x_max - x_min) / width;
         double pixelHeight = (y_max - y_min) / height;
-        float[][] pixelColors = new float[height][width];
 
-        for (int py = 0; py < height; py++) {
+        Thread[] workers = new Thread[numThreads];
+
+        for (int k = 0; k < numThreads; k++) {
+
+            int startY = rowsPerThread * k;
+            int endY = rowsPerThread * k + rowsPerThread;
+
+            workers[k] = new Thread(() -> {
+
+                calculatePart(startY, endY, pixelWidth, pixelHeight);
+            });
+        }
+
+        for(int k = 0; k < workers.length; ++k)
+            workers[k].start();
+
+        for(int k = 0; k < workers.length; ++k) {
+            try {
+                workers[k].join();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        return pixelColors;
+    }
+
+    public float[][] generateMandelbrotJob(int startY, int endY) {
+
+        double pixelWidth = (x_max - x_min) / width;
+        double pixelHeight = (y_max - y_min) / height;
+
+        calculatePart(startY, endY, pixelWidth, pixelHeight);
+
+        return pixelColors;
+    }
+
+    private void calculatePart(int startY, int endY, double pixelWidth, double pixelHeight) {
+        for (int py = startY; py < endY; py++) {
             double y0 = y_min + py * pixelHeight;
+
             for (int px = 0; px < width; px++) {
                 double x0 = x_min + px * pixelWidth;
 
-                double x = 0.0;
-                double y = 0.0;
+                double x = 0;
+                double y = 0;
                 int iter = 0;
 
-                while (x * x + y * y <= 4 && iter < max_iter) {
-                    double xtemp = x * x - y * y + x0;
-                    y = 2 * x * y + y0;
+                while (x*x + y*y <= 4 && iter < max_iter) {
+                    double xtemp = x*x - y*y + x0;
+                    y = 2*x*y + y0;
                     x = xtemp;
                     iter++;
                 }
 
-                float value = (float) iter / max_iter;
-                pixelColors[py][px] = value;
+                pixelColors[py][px] = (float) iter / max_iter;
             }
+
         }
-        return pixelColors;
     }
 
     public BufferedImage paintMandelbrot(float[][] colors) {
